@@ -6,6 +6,7 @@ import pwd
 import grp
 import stat
 import datetime
+import subprocess
 from pprint import pprint
 
 
@@ -96,8 +97,9 @@ def processrows(files):
 
 
 def display(out):
-    sys.stdout.write(out)
-    sys.stdout.write('\n')
+    formatted = ''.join([out, '\n'])
+    encoded = formatted.encode('utf-8')
+    pagedisplay(encoded)
     return True
 
 
@@ -106,6 +108,38 @@ def getfiles():
     processed = processrows(files)
     sfiles = sorted(processed, key=sortfile)
     return sfiles
+
+
+def pagedisplay(output):
+    """
+    See:
+        https://chase-seibert.github.io/blog
+        /2012/10/31/python-fork-exec-vim-raw-input.html
+    """
+    proc = lambda: (
+        subprocess.Popen(
+            [
+                'less',
+                '--RAW-CONTROL-CHARS',
+                '--quit-at-eof',
+                '--quit-if-one-screen',
+                '--no-init'
+            ],
+            stdin=subprocess.PIPE,
+            stdout=sys.stdout
+        )
+    )
+    with proc() as pager:
+        try:
+            pager.communicate(output)
+            pager.stdin.close()
+            pager.wait()
+        except KeyboardInterrupt:
+            ## TODO: Any way to stop ctrl-c from
+            ## screwing up keyboard entry?
+            pager.terminate()
+            pager.wait()
+    return True
 
 
 def main():
