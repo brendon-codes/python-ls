@@ -31,8 +31,7 @@ COLOR_VALS = {
     'targetname': 'light_cyan',
     'time': 'light_blue',
     'subfilecount': 'light_blue',
-    'acls': 'light_magenta',
-    'perms': 'light_blue',
+    'acls': 'light_blue',
     'owner': 'light_magenta',
     'size': 'light_magenta',
     'preview': 'dark_gray',
@@ -65,8 +64,6 @@ def makecolor(row, field):
         clr = 'subfilecount'
     elif field == 'acls':
         clr = 'acls'
-    elif field == 'perms':
-        clr = 'perms'
     elif field == 'owner':
         clr = 'owner'
     elif field == 'size':
@@ -88,7 +85,6 @@ def addcolor(text, color):
 def structurecols(row):
     return [
         makecolor(row, 'acls'),
-        makecolor(row, 'perms'),
         makecolor(row, 'owner'),
         makecolor(row, 'timeiso'),
         makecolor(row, 'size'),
@@ -111,8 +107,21 @@ def renderrows(files):
 
 
 def col_acls(fname, stat_res):
-    #ret = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
-    ret = stat.filemode(stat_res.st_mode)
+    t_no = '-'
+    #all_acls_mode = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
+    all_acls_mode = stat.filemode(stat_res.st_mode)
+    me_can_read = os.access(fname, os.R_OK)
+    me_can_write = os.access(fname, os.W_OK)
+    me_can_exec = os.access(fname, os.X_OK)
+    me_pdefs = [
+        (me_can_read, 'r'),
+        (me_can_write, 'w'),
+        (me_can_exec, 'x')
+    ]
+    me_func = lambda x: x[1] if x[0] else t_no
+    me_pitems = map(me_func, me_pdefs)
+    me_acls_mode = ''.join(me_pitems)
+    ret = ' '.join([all_acls_mode, me_acls_mode])
     return ret
 
 
@@ -175,21 +184,6 @@ def col_ftype(fname, stat_res):
         return 'directory'
     return 'file'
 
-
-def col_perms(fname, stat_res):
-    t_no = '-'
-    can_read = os.access(fname, os.R_OK)
-    can_write = os.access(fname, os.W_OK)
-    can_exec = os.access(fname, os.X_OK)
-    pdefs = [
-        (can_read, 'r'),
-        (can_write, 'w'),
-        (can_exec, 'x')
-    ]
-    func = lambda x: x[1] if x[0] else t_no
-    pitems = map(func, pdefs)
-    ret = ''.join(pitems)
-    return ret
 
 
 def col_subfilecount(fname, stat_res):
@@ -255,7 +249,6 @@ def buildrow(fname):
         'ftype': col_ftype(fname, stat_res),
         'acls': col_acls(fname, stat_res),
         'owner': col_owner(fname, stat_res),
-        'perms': col_perms(fname, stat_res),
         'size': col_size(fname, stat_res),
         'timeiso': col_timeiso(fname, stat_res),
         'timeepoch': col_timeepoch(fname, stat_res),
