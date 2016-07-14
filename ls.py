@@ -198,7 +198,7 @@ def col_preview(fname, stat_res):
     if len(data) == 0:
         return ' '
     pat = r'(?u)[^\u0021-\u0126]+'
-    cleaned = re.sub(pat, ' ', data)
+    cleaned = re.sub(pat, ' ', data).strip()
     return cleaned
 
 
