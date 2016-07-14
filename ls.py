@@ -210,10 +210,14 @@ def col_preview(fname, stat_res):
         return ' '
     if not istextfile(fname):
         return ' '
-    data = None
-    with open(fname, 'rt') as fh:
-        data = fh.read(PREVIEW_LEN)
-    if len(data) == 0:
+    rawdata = None
+    with open(fname, 'rb') as fh:
+        rawdata = fh.read(PREVIEW_LEN)
+    if len(rawdata) == 0:
+        return ' '
+    try:
+        data = str(rawdata)
+    except (UnicodeDecodeError, TypeError):
         return ' '
     pat = r'(?u)[^\u0021-\u0126]+'
     cleaned = re.sub(pat, ' ', data).strip()
