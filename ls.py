@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import re
 import sys
 import os
 import pwd
@@ -9,6 +10,7 @@ import datetime
 import subprocess
 from pprint import pprint
 
+
 COLORS = {
     'red': '\033[31m',
     'magenta': '\033[35m',
@@ -17,7 +19,9 @@ COLORS = {
     'light_cyan': '\033[96m',
     'light_yellow': '\033[93m',
     'light_gray': '\033[37m',
+    'dark_gray': '\033[30m',
     'light_red': '\033[91m',
+    'light_blue': '\033[94m',
     'end': '\033[0m'
 }
 
@@ -26,9 +30,16 @@ COLOR_VALS = {
     'srcname_file': 'light_green',
     'targetname': 'light_cyan',
     'time': 'light_magenta',
-    'default': 'light_gray'
+    'subfilecount': 'light_blue',
+    'perms': 'light_blue',
+    'owner': 'light_magenta',
+    'size': 'light_blue',
+    'preview': 'dark_gray',
+    'default': 'light_magenta'
 }
 
+
+PREVIEW_LEN = 64
 
 
 def sortfile(row):
@@ -49,6 +60,16 @@ def makecolor(row, field):
             clr = 'srcname_file'
     elif field == 'timeiso':
         clr = 'time'
+    elif field == 'subfilecount':
+        clr = 'subfilecount'
+    elif field == 'perms':
+        clr = 'perms'
+    elif field == 'owner':
+        clr = 'owner'
+    elif field == 'size':
+        clr = 'size'
+    elif field == 'preview':
+        clr = 'preview'
     else:
         clr = 'default'
     clrval = COLOR_VALS[clr]
@@ -67,13 +88,15 @@ def structurecols(row):
         makecolor(row, 'owner'),
         makecolor(row, 'size'),
         makecolor(row, 'timeiso'),
+        makecolor(row, 'subfilecount'),
         makecolor(row, 'srcname'),
-        makecolor(row, 'targetname')
+        makecolor(row, 'targetname'),
+        makecolor(row, 'preview')
     ]
 
 
 def rendercols(row):
-    return '\t'.join(structurecols(row))
+    return ''.join(['\t', '\t'.join(structurecols(row))])
 
 
 def renderrows(files):
@@ -130,7 +153,7 @@ def col_targetname(fname, stat_res):
             target = real
         ret = target
     else:
-        ret = ''
+        ret = ' '
     return ret
 
 
@@ -146,6 +169,63 @@ def col_ftype(fname, stat_res):
     return 'file'
 
 
+def col_subfilecount(fname, stat_res):
+    real = None
+    islink = os.path.islink(fname)
+    isdir = False
+    if islink:
+        real = os.path.relpath(os.path.realpath(fname))
+    else:
+        real = fname
+    isdir = os.path.isdir(real)
+    if not isdir:
+        ret = '-'
+    else:
+        ret = str(len(os.listdir(real)))
+    return ret
+
+
+def col_preview(fname, stat_res):
+    if os.path.isdir(fname):
+        return ' '
+    if not os.access(fname, os.R_OK):
+        return ' '
+    if not istextfile(fname):
+        return ' '
+    data = None
+    with open(fname, 'rt') as fh:
+        data = fh.read(PREVIEW_LEN)
+    if len(data) == 0:
+        return ' '
+    pat = r'(?u)[^\u0021-\u0126]+'
+    cleaned = re.sub(pat, ' ', data)
+    return cleaned
+
+
+
+def istextfile(fname):
+    """
+    See: http://stackoverflow.com/a/898759
+    """
+    proc = lambda: (
+        subprocess.Popen(
+            [
+                'file',
+                '--mime',
+                '--dereference',
+                fname
+            ],
+            stdout=subprocess.PIPE
+        )
+    )
+    out = None
+    with proc() as subproc:
+        out = str(subproc.stdout.read())
+    pat = '(?u)[^a-zA-Z]text[^a-zA-Z]'
+    check = (re.search(pat, out) is not None)
+    return check
+
+
 def buildrow(fname):
     stat_res = os.lstat(fname)
     row = {
@@ -157,7 +237,9 @@ def buildrow(fname):
         'timeepoch': col_timeepoch(fname, stat_res),
         'srcname': col_srcname(fname, stat_res),
         'targetname': col_targetname(fname, stat_res),
-        'name': col_name(fname, stat_res)
+        'name': col_name(fname, stat_res),
+        'subfilecount': col_subfilecount(fname, stat_res),
+        'preview': col_preview(fname, stat_res)
     }
     return row;
 
