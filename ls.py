@@ -170,9 +170,14 @@ def processrows(files):
     return out
 
 
-def display(out):
-    formatted = ''.join([out, '\n'])
+def encode_output(data):
+    formatted = ''.join(['\n', data, '\n', '\n'])
     encoded = formatted.encode('utf-8')
+    return encoded
+
+
+def display(rows):
+    encoded = encode_output(rows)
     pagedisplay(encoded)
     return True
 
@@ -218,8 +223,8 @@ def pagedisplay(output):
 
 def main():
     files = getfiles()
-    out = renderrows(files)
-    display(out)
+    rows = renderrows(files)
+    display(rows)
     return 0
 
 
