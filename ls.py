@@ -30,9 +30,6 @@ COLOR_VALS = {
 }
 
 
-def getrow(fname):
-    return fname
-
 
 def sortfile(row):
     fname = row['name']
