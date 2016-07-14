@@ -9,6 +9,26 @@ import datetime
 import subprocess
 from pprint import pprint
 
+COLORS = {
+    'red': '\033[31m',
+    'magenta': '\033[35m',
+    'light_magenta': '\033[95m',
+    'light_green': '\033[92m',
+    'light_cyan': '\033[96m',
+    'light_yellow': '\033[93m',
+    'light_gray': '\033[37m',
+    'light_red': '\033[91m',
+    'end': '\033[0m'
+}
+
+COLOR_VALS = {
+    'printname_directory': 'light_red',
+    'printname_file': 'light_green',
+    'printname_symlink': 'light_cyan',
+    'time': 'light_magenta',
+    'default': 'light_gray'
+}
+
 
 def getrow(fname):
     return fname
@@ -22,13 +42,35 @@ def sortfile(row):
     return out
 
 
+def makecolor(row, field):
+    if field == 'printname':
+        if row['ftype'] == 'directory':
+            clr = 'printname_directory'
+        elif row['ftype'] == 'symlink':
+            clr = 'printname_symlink'
+        else:
+            clr = 'printname_file'
+    elif field == 'time':
+        clr = 'time'
+    else:
+        clr = 'default'
+    clrval = COLOR_VALS[clr]
+    out = addcolor(row[field], clrval)
+    return out
+
+
+def addcolor(text, color):
+    out = text.join([COLORS[color], COLORS['end']])
+    return out
+
+
 def structurecols(row):
     return [
-        row['perms'],
-        row['owner'],
-        row['size'],
-        row['time'],
-        row['printname']
+        makecolor(row, 'perms'),
+        makecolor(row, 'owner'),
+        makecolor(row, 'size'),
+        makecolor(row, 'time'),
+        makecolor(row, 'printname')
     ]
 
 
@@ -67,10 +109,20 @@ def col_time(fname, stat_res):
 def col_printname(fname, stat_res):
     islink = os.path.islink(fname)
     if islink:
-        target = os.path.relpath(os.path.realpath(fname))
+        real = os.path.relpath(os.path.realpath(fname))
+        isdir = os.path.isdir(real)
+        if isdir:
+            target = ''.join([real, '/'])
+        else:
+            target = real
         ret = ' -> '.join([fname, target])
     else:
-        ret = fname
+        isdir = os.path.isdir(fname)
+        if isdir:
+            target = ''.join([fname, '/'])
+        else:
+            target = fname
+        ret = target
     return ret
 
 
@@ -78,9 +130,18 @@ def col_name(fname, stat_res):
     return fname
 
 
+def col_ftype(fname, stat_res):
+    if os.path.islink(fname):
+        return 'symlink'
+    elif os.path.isdir(fname):
+        return 'directory'
+    return 'file'
+
+
 def buildrow(fname):
     stat_res = os.lstat(fname)
     row = {
+        'ftype': col_ftype(fname, stat_res),
         'perms': col_perms(fname, stat_res),
         'owner': col_owner(fname, stat_res),
         'size': col_size(fname, stat_res),
