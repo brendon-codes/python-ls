@@ -31,6 +31,7 @@ COLOR_VALS = {
     'targetname': 'light_cyan',
     'time': 'light_blue',
     'subfilecount': 'light_blue',
+    'acls': 'light_magenta',
     'perms': 'light_blue',
     'owner': 'light_magenta',
     'size': 'light_magenta',
@@ -39,7 +40,7 @@ COLOR_VALS = {
 }
 
 
-PREVIEW_LEN = 64
+PREVIEW_LEN = 48
 
 
 def sortfile(row):
@@ -62,6 +63,8 @@ def makecolor(row, field):
         clr = 'time'
     elif field == 'subfilecount':
         clr = 'subfilecount'
+    elif field == 'acls':
+        clr = 'acls'
     elif field == 'perms':
         clr = 'perms'
     elif field == 'owner':
@@ -84,6 +87,7 @@ def addcolor(text, color):
 
 def structurecols(row):
     return [
+        makecolor(row, 'acls'),
         makecolor(row, 'perms'),
         makecolor(row, 'owner'),
         makecolor(row, 'timeiso'),
@@ -96,7 +100,9 @@ def structurecols(row):
 
 
 def rendercols(row):
-    return ''.join(['\t', '\t'.join(structurecols(row))])
+    #ret = ''.join(['\t', '\t'.join(structurecols(row))])
+    ret = '\t'.join(structurecols(row))
+    return ret
 
 
 def renderrows(files):
@@ -104,8 +110,9 @@ def renderrows(files):
     return out
 
 
-def col_perms(fname, stat_res):
-    ret = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
+def col_acls(fname, stat_res):
+    #ret = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
+    ret = stat.filemode(stat_res.st_mode)
     return ret
 
 
@@ -169,6 +176,22 @@ def col_ftype(fname, stat_res):
     return 'file'
 
 
+def col_perms(fname, stat_res):
+    t_no = '-'
+    can_read = os.access(fname, os.R_OK)
+    can_write = os.access(fname, os.W_OK)
+    can_exec = os.access(fname, os.X_OK)
+    pdefs = [
+        (can_read, 'r'),
+        (can_write, 'w'),
+        (can_exec, 'x')
+    ]
+    func = lambda x: x[1] if x[0] else t_no
+    pitems = map(func, pdefs)
+    ret = ''.join(pitems)
+    return ret
+
+
 def col_subfilecount(fname, stat_res):
     real = None
     islink = os.path.islink(fname)
@@ -179,7 +202,7 @@ def col_subfilecount(fname, stat_res):
         real = fname
     isdir = os.path.isdir(real)
     if not isdir:
-        ret = '-'
+        ret = ' '
     else:
         ret = str(len(os.listdir(real)))
     return ret
@@ -230,8 +253,9 @@ def buildrow(fname):
     stat_res = os.lstat(fname)
     row = {
         'ftype': col_ftype(fname, stat_res),
-        'perms': col_perms(fname, stat_res),
+        'acls': col_acls(fname, stat_res),
         'owner': col_owner(fname, stat_res),
+        'perms': col_perms(fname, stat_res),
         'size': col_size(fname, stat_res),
         'timeiso': col_timeiso(fname, stat_res),
         'timeepoch': col_timeepoch(fname, stat_res),
