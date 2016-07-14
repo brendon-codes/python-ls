@@ -15,6 +15,7 @@ COLORS = {
     'red': '\033[31m',
     'magenta': '\033[35m',
     'light_magenta': '\033[95m',
+    'green': '\033[32m',
     'light_green': '\033[92m',
     'light_cyan': '\033[96m',
     'light_yellow': '\033[93m',
@@ -22,6 +23,7 @@ COLORS = {
     'dark_gray': '\033[30m',
     'light_red': '\033[91m',
     'light_blue': '\033[94m',
+    'blue': '\033[34m',
     'end': '\033[0m'
 }
 
@@ -29,11 +31,11 @@ COLOR_VALS = {
     'srcname_directory': 'light_red',
     'srcname_file': 'light_green',
     'targetname': 'light_cyan',
-    'time': 'light_blue',
-    'subfilecount': 'light_blue',
-    'acls': 'light_blue',
-    'owner': 'light_magenta',
-    'size': 'light_magenta',
+    'time': 'blue',
+    'subfilecount': 'magenta',
+    'acls': 'dark_gray',
+    'owner': 'dark_gray',
+    'size': 'magenta',
     'preview': 'dark_gray',
     'default': 'light_magenta'
 }
@@ -86,9 +88,9 @@ def structurecols(row):
     return [
         makecolor(row, 'acls'),
         makecolor(row, 'owner'),
-        makecolor(row, 'timeiso'),
         makecolor(row, 'size'),
         makecolor(row, 'subfilecount'),
+        makecolor(row, 'timeiso'),
         makecolor(row, 'srcname'),
         makecolor(row, 'targetname'),
         makecolor(row, 'preview')
