@@ -194,12 +194,11 @@ def col_subfilecount(fname, stat_res):
         real = os.path.relpath(os.path.realpath(fname))
     else:
         real = fname
-    isdir = os.path.isdir(real)
-    if not isdir:
-        ret = ' '
-    else:
-        ret = str(len(os.listdir(real)))
-    return ret
+    if not os.path.isdir(real):
+        return ' '
+    if not os.access(real, os.R_OK):
+        return '-'
+    return str(len(os.listdir(real)))
 
 
 def col_preview(fname, stat_res):
