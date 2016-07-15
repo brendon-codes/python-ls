@@ -182,10 +182,14 @@ def col_name(fname, stat_res):
 
 def col_ftype(fname, stat_res):
     if os.path.islink(fname):
-        return 'symlink'
-    elif os.path.isdir(fname):
-        return 'directory'
-    return 'file'
+        real = os.path.relpath(os.path.realpath(fname))
+    else:
+        real = fname
+    if os.path.isdir(real):
+        ret = 'directory'
+    else:
+        ret = 'file'
+    return ret
 
 
 
