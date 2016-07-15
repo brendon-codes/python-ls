@@ -238,11 +238,12 @@ def istextfile(fname):
             stdout=subprocess.PIPE
         )
     )
-    out = None
+    rawdata = None
     with proc() as subproc:
-        out = str(subproc.stdout.read())
+        rawdata = subproc.stdout.read()
+    data = rawdata.decode('utf-8', errors='replace')
     pat = '(?u)[^a-zA-Z]text[^a-zA-Z]'
-    check = (re.search(pat, out) is not None)
+    check = (re.search(pat, data) is not None)
     return check
 
 
