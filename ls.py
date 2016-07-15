@@ -7,6 +7,7 @@ import pwd
 import grp
 import stat
 import datetime
+import argparse
 import subprocess
 from pprint import pprint
 
@@ -85,27 +86,38 @@ def addcolor(text, color):
     return out
 
 
-def structurecols(row):
-    return [
-        makecolor(row, 'acls'),
-        makecolor(row, 'owner'),
-        makecolor(row, 'size'),
-        makecolor(row, 'subfilecount'),
-        makecolor(row, 'timeiso'),
-        makecolor(row, 'srcname'),
-        makecolor(row, 'targetname'),
-        makecolor(row, 'preview')
-    ]
+def getcolslisting(full=False):
+    out = []
+    if full:
+        out.append('acls')
+        out.append('owner')
+    out.append('size')
+    out.append('subfilecount')
+    out.append('timeiso')
+    out.append('srcname')
+    out.append('targetname')
+    if full:
+        out.append('preview')
+    return out
 
 
-def rendercols(row):
-    #ret = ''.join(['\t', '\t'.join(structurecols(row))])
-    ret = '\t'.join(structurecols(row))
+def structurecols(row, full=False):
+    colslisting = getcolslisting(full=full)
+    func = lambda name: makecolor(row, name)
+    ret = map(func, colslisting)
     return ret
 
 
-def renderrows(files):
-    out = '\n'.join(map(rendercols, files))
+def rendercols(row, full=False):
+    structcols = structurecols(row, full=full)
+    ret = ''.join(['\t', '\t'.join(structcols)])
+    #ret = '\t'.join(sructcols)
+    return ret
+
+
+def renderrows(files, full=False):
+    renderer = lambda r: rendercols(r, full=full)
+    out = '\n'.join(map(renderer, files))
     return out
 
 
@@ -325,10 +337,32 @@ def pagedisplay(output):
     return True
 
 
-def main():
+def run(full=False):
     files = getfiles()
-    rows = renderrows(files)
+    rows = renderrows(files, full=full)
     display(rows)
+    return True
+
+
+
+def getargs():
+    arger = argparse.ArgumentParser(description='Replacement for ls')
+    arger.add_argument(
+        '-f',
+        '--full',
+        help='Full Output',
+        dest='full',
+        default=False,
+        action='store_true'
+    )
+    args = arger.parse_args()
+    return args
+
+
+
+def main():
+    args = getargs()
+    run(full=args.full)
     return 0
 
 
