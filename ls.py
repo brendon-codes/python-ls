@@ -41,7 +41,8 @@ COLOR_VALS = {
 }
 
 
-PREVIEW_LEN = 48
+PREVIEW_READ_LEN = 256
+PREVIEW_TRUNC_LEN = 48
 
 
 def sortfile(row):
@@ -210,18 +211,15 @@ def col_preview(fname, stat_res):
         return ' '
     if not istextfile(fname):
         return ' '
-    rawdata = None
-    with open(fname, 'rb') as fh:
-        rawdata = fh.read(PREVIEW_LEN)
-    if len(rawdata) == 0:
-        return ' '
-    try:
-        data = str(rawdata)
-    except (UnicodeDecodeError, TypeError):
+    data = None
+    with open(fname, 'rt', errors='replace') as fh:
+        data = fh.read(PREVIEW_READ_LEN)
+    if len(data) == 0:
         return ' '
     pat = r'(?u)[^\u0021-\u0126]+'
     cleaned = re.sub(pat, ' ', data).strip()
-    return cleaned
+    truncated = cleaned[:PREVIEW_TRUNC_LEN]
+    return truncated
 
 
 
