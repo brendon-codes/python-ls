@@ -225,15 +225,26 @@ def col_preview(fname, stat_res):
         return ' '
     if not os.access(fname, os.R_OK):
         return ' '
+    fileinfo = getfileinfo(fname)
     ##
-    ## If is binary
+    ## Binary Executable such as ELF
     ##
-    if not istextfile(fname):
+    if fileinfo == 'binary_executable':
+        return ' '
+    ##
+    ## Some other binary such as image
+    ##
+    if fileinfo == 'binary_other':
         return preview_binary(fname)
     ##
     ## If is text
     ##
-    return preview_text(fname)
+    if fileinfo == 'text':
+        return preview_text(fname)
+    ##
+    ## Something else
+    ##
+    return ' '
 
 
 def preview_binary(fname):
@@ -275,7 +286,7 @@ def preview_text(fname):
 
 
 
-def istextfile(fname):
+def getfileinfo(fname):
     """
     See: http://stackoverflow.com/a/898759
     """
@@ -294,9 +305,26 @@ def istextfile(fname):
     with proc() as subproc:
         rawdata = subproc.stdout.read()
     data = rawdata.decode('utf-8', errors='replace')
-    pat = '(?u)[^a-zA-Z]text[^a-zA-Z]'
-    check = (re.search(pat, data) is not None)
-    return check
+    ##
+    ## First check if text
+    ##
+    if (re.search('(?u)[^a-zA-Z]text[^a-zA-Z]', data) is not None):
+        return 'text'
+    ##
+    ## Executable binary file such as ELF
+    ##
+    if (
+            re.search(
+                '(?u)[^a-zA-Z]x-(executable|sharedlib)[^a-zA-Z]',
+                data
+            )
+            is not None
+    ):
+        return 'binary_executable'
+    ##
+    ## Some other binary file such as an image
+    ##
+    return 'binary_other'
 
 
 def getrowdefs():
