@@ -263,26 +263,93 @@ def istextfile(fname):
     return check
 
 
-def buildrow(fname):
+def getrowdefs():
+    fdefs = [
+        {
+            'name': 'ftype',
+            'func': col_ftype,
+            'onlyfull': False
+        },
+        {
+            'name': 'acls',
+            'func': col_acls,
+            'onlyfull': True
+        },
+        {
+            'name': 'owner',
+            'func': col_owner,
+            'onlyfull': True
+        },
+        {
+            'name': 'size',
+            'func': col_size,
+            'onlyfull': False
+        },
+        {
+            'name': 'timeiso',
+            'func': col_timeiso,
+            'onlyfull': False
+        },
+        {
+            'name': 'timeepoch',
+            'func': col_timeepoch,
+            'onlyfull': False
+        },
+        {
+            'name': 'srcname',
+            'func': col_srcname,
+            'onlyfull': False
+        },
+        {
+            'name': 'targetname',
+            'func': col_targetname,
+            'onlyfull': False
+        },
+        {
+            'name': 'name',
+            'func': col_name,
+            'onlyfull': False
+        },
+        {
+            'name': 'subfilecount',
+            'func': col_subfilecount,
+            'onlyfull': False
+        },
+        {
+            'name': 'preview',
+            'func': col_preview,
+            'onlyfull': True
+        }
+    ]
+    return fdefs
+
+
+def shouldbuild(defrec, full=False):
+    if defrec['onlyfull'] and (not full):
+        return False
+    return True
+
+
+def buildrow(fname, full=False):
     stat_res = os.lstat(fname)
-    row = {
-        'ftype': col_ftype(fname, stat_res),
-        'acls': col_acls(fname, stat_res),
-        'owner': col_owner(fname, stat_res),
-        'size': col_size(fname, stat_res),
-        'timeiso': col_timeiso(fname, stat_res),
-        'timeepoch': col_timeepoch(fname, stat_res),
-        'srcname': col_srcname(fname, stat_res),
-        'targetname': col_targetname(fname, stat_res),
-        'name': col_name(fname, stat_res),
-        'subfilecount': col_subfilecount(fname, stat_res),
-        'preview': col_preview(fname, stat_res)
-    }
+    fdefs = getrowdefs()
+    func = (
+        lambda rec: (
+            rec['name'],
+            (
+                rec['func'](fname, stat_res) if
+                shouldbuild(rec, full=full) else
+                None
+            )
+        )
+    )
+    row = dict(map(func, fdefs))
     return row;
 
 
-def processrows(files):
-    out = map(buildrow, files)
+def processrows(files, full=False):
+    func = lambda fname: buildrow(fname, full=full)
+    out = map(func, files)
     return out
 
 
@@ -298,9 +365,9 @@ def display(rows):
     return True
 
 
-def getfiles():
+def getfiles(full=False):
     files = os.listdir('./')
-    processed = processrows(files)
+    processed = processrows(files, full=full)
     sfiles = sorted(processed, key=sortfile, reverse=False)
     return sfiles
 
@@ -338,7 +405,7 @@ def pagedisplay(output):
 
 
 def run(full=False):
-    files = getfiles()
+    files = getfiles(full=full)
     rows = renderrows(files, full=full)
     display(rows)
     return True
