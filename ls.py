@@ -416,6 +416,8 @@ def info_contenttype(fname, stat_res):
         return 'not_applicable'
     if not os.access(fname, os.R_OK):
         return 'not_readable'
+    if stat_res.st_size == 0:
+        return 'empty'
     fileinfo = getfileinfo(fname)
     ##
     ## Binary Executable such as ELF
