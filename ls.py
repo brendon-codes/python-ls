@@ -9,6 +9,7 @@ import stat
 import datetime
 import argparse
 import subprocess
+from functools import reduce
 from pprint import pprint
 
 
@@ -33,11 +34,11 @@ COLOR_VALS = {
     'srcname_file': 'light_green',
     'targetname': 'light_cyan',
     'time': 'blue',
-    'subfilecount': 'magenta',
+    'size_filecount': 'green',
+    'size_bytes': 'magenta',
     'acls': 'dark_gray',
     'owner': 'dark_gray',
     'filetype': 'dark_gray',
-    'size': 'magenta',
     'preview': 'dark_gray',
     'default': 'light_magenta'
 }
@@ -55,7 +56,7 @@ def sortfile(row):
     return out
 
 
-def makecolor(row, field):
+def getcolordefs(row, field):
     if field == 'targetname':
         clr = 'targetname'
     elif field == 'srcname':
@@ -65,8 +66,11 @@ def makecolor(row, field):
             clr = 'srcname_file'
     elif field == 'timeiso':
         clr = 'time'
-    elif field == 'subfilecount':
-        clr = 'subfilecount'
+    elif field == 'size':
+        if row['info']['ftype'] == 'directory':
+            clr = 'size_filecount'
+        else:
+            clr = 'size_bytes'
     elif field == 'acls':
         clr = 'acls'
     elif field == 'owner':
@@ -79,9 +83,25 @@ def makecolor(row, field):
         clr = 'preview'
     else:
         clr = 'default'
+    return clr
+
+
+def addpadding(field, val, colpaddings):
+    if len(val) == 0:
+        return ''
+    padlen = colpaddings[field]
+    padstr = ''.join(['{:', str(padlen), 's}'])
+    ret = padstr.format(val)
+    return ret
+
+
+def makepretty(row, field, colpaddings):
+    clr = getcolordefs(row, field)
     clrval = COLOR_VALS[clr]
-    out = addcolor(row['render'][field], clrval)
-    return out
+    textval = row['render'][field]
+    paddedval = addpadding(field, textval, colpaddings)
+    colorval = addcolor(paddedval, clrval)
+    return colorval
 
 
 def addcolor(text, color):
@@ -96,7 +116,6 @@ def getcolslisting(full=False):
         out.append('owner')
         out.append('filetype')
     out.append('size')
-    out.append('subfilecount')
     out.append('timeiso')
     out.append('srcname')
     out.append('targetname')
@@ -105,43 +124,65 @@ def getcolslisting(full=False):
     return out
 
 
-def structurecols(row, full=False):
+def structurecols(row, colpaddings, full=False):
     colslisting = getcolslisting(full=full)
-    func = lambda name: makecolor(row, name)
+    func = lambda name: makepretty(row, name, colpaddings)
     ret = map(func, colslisting)
     return ret
 
 
-def rendercols(row, full=False):
-    structcols = structurecols(row, full=full)
-    ret = ''.join(['\t', '\t'.join(structcols)])
-    #ret = '\t'.join(sructcols)
+def padcols(row, colpaddings):
+    print()
+    ret = (
+        map(
+            lambda rec: padcol(rec[0], rec[1], colpaddings),
+            row['render'].items()
+        )
+    )
+    return ret
+
+
+def rendercols(row, colpaddings, full=False):
+    margin = '   '
+    structcols = structurecols(row, colpaddings, full=full)
+    ret = ''.join([margin, margin.join(structcols)])
     return ret
 
 
 def renderrows(files, full=False):
-    renderer = lambda r: rendercols(r, full=full)
+    colpaddings = getcolpaddings(files)
+    renderer = lambda r: rendercols(r, colpaddings, full=full)
     out = '\n'.join(map(renderer, files))
     return out
+
+
+def get_acls_me(fname, stat_res):
+    t_no = 0
+    me_can_read = os.access(fname, os.R_OK)
+    me_can_write = os.access(fname, os.W_OK)
+    me_can_exec = os.access(fname, os.X_OK)
+    me_pdefs = [
+        (me_can_read, 4),
+        (me_can_write, 2),
+        (me_can_exec, 1)
+    ]
+    me_vals = map(lambda x: x[1] if x[0] else t_no, me_pdefs)
+    me_acls_num = reduce(lambda x, y: x | y, me_vals, 0)
+    me_acls_mode = str(me_acls_num)
+    return me_acls_mode
+
+
+def get_acls_all(fname, stat_res):
+    #all_acls_mode = stat.filemode(stat_res.st_mode)
+    all_acls_mode = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
+    return all_acls_mode
 
 
 def col_acls(rowinfo):
     fname = rowinfo['fname']
     stat_res = rowinfo['stat_res']
-    t_no = '-'
-    #all_acls_mode = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
-    all_acls_mode = stat.filemode(stat_res.st_mode)
-    me_can_read = os.access(fname, os.R_OK)
-    me_can_write = os.access(fname, os.W_OK)
-    me_can_exec = os.access(fname, os.X_OK)
-    me_pdefs = [
-        (me_can_read, 'r'),
-        (me_can_write, 'w'),
-        (me_can_exec, 'x')
-    ]
-    me_func = lambda x: x[1] if x[0] else t_no
-    me_pitems = map(me_func, me_pdefs)
-    me_acls_mode = ''.join(me_pitems)
+    all_acls_mode = get_acls_all(fname, stat_res)
+    me_acls_mode = get_acls_me(fname, stat_res)
     ret = ' '.join([all_acls_mode, me_acls_mode])
     return ret
 
@@ -155,11 +196,16 @@ def col_owner(rowinfo):
     return ret
 
 
-def col_size(rowinfo):
-    fname = rowinfo['fname']
+def getfilesize(rowinfo):
     stat_res = rowinfo['stat_res']
     ret = '{:,}'.format(stat_res.st_size)
     return ret
+
+
+def col_size(rowinfo):
+    if rowinfo['ftype'] == 'directory':
+        return getsubfilecount(rowinfo)
+    return getfilesize(rowinfo)
 
 
 def col_timeiso(rowinfo):
@@ -195,11 +241,11 @@ def col_targetname(rowinfo):
             target = real
         ret = target
     else:
-        ret = ' '
+        ret = ''
     return ret
 
 
-def col_subfilecount(rowinfo):
+def getsubfilecount(rowinfo):
     fname = rowinfo['fname']
     stat_res = rowinfo['stat_res']
     real = None
@@ -210,7 +256,7 @@ def col_subfilecount(rowinfo):
     else:
         real = fname
     if not os.path.isdir(real):
-        return ' '
+        return '-'
     if not os.access(real, os.R_OK):
         return '-'
     return str(len(os.listdir(real)))
@@ -219,12 +265,12 @@ def col_subfilecount(rowinfo):
 def col_filetype(rowinfo):
     contenttype = rowinfo['contenttype']
     if contenttype == 'binary_executable':
-        return 'exe'
+        return 'e'
     if contenttype == 'binary_other':
-        return 'bin'
+        return 'b'
     if contenttype == 'text':
-        return 'txt'
-    return '---'
+        return 't'
+    return '-'
 
 
 def col_preview(rowinfo):
@@ -235,7 +281,7 @@ def col_preview(rowinfo):
         return preview_binary(fname)
     if contenttype == 'text':
         return preview_text(fname)
-    return ' '
+    return ''
 
 
 def preview_binary(fname):
@@ -249,7 +295,7 @@ def preview_binary(fname):
     with open(fname, 'rb') as fh:
         data = fh.read(PREVIEW_READ_LEN)
     if len(data) == 0:
-        return ' '
+        return ''
     newdata = ''.join(map(chr, filter(inrange, data)))
     stripped = newdata.strip()
     cleaned = re.sub('(?u)[\s]+', ' ', stripped)
@@ -262,7 +308,7 @@ def preview_text(fname):
     with open(fname, 'rt', errors='replace') as fh:
         data = fh.read(PREVIEW_READ_LEN)
     if len(data) == 0:
-        return ' '
+        return ''
     ##
     ## Match
     ##
@@ -323,47 +369,50 @@ def getrowdefs():
         {
             'name': 'acls',
             'func': col_acls,
-            'onlyfull': True
+            'onlyfull': True,
+            'align': 'left'
         },
         {
             'name': 'owner',
             'func': col_owner,
-            'onlyfull': True
+            'onlyfull': True,
+            'align': 'left'
         },
         {
             'name': 'filetype',
             'func': col_filetype,
-            'onlyfull': True
+            'onlyfull': True,
+            'align': 'left'
         },
         {
             'name': 'size',
             'func': col_size,
-            'onlyfull': False
+            'onlyfull': False,
+            'align': 'right'
         },
         {
             'name': 'timeiso',
             'func': col_timeiso,
-            'onlyfull': False
+            'onlyfull': False,
+            'align': 'left'
         },
         {
             'name': 'srcname',
             'func': col_srcname,
-            'onlyfull': False
+            'onlyfull': False,
+            'align': 'left'
         },
         {
             'name': 'targetname',
             'func': col_targetname,
-            'onlyfull': False
-        },
-        {
-            'name': 'subfilecount',
-            'func': col_subfilecount,
-            'onlyfull': False
+            'onlyfull': False,
+            'align': 'left'
         },
         {
             'name': 'preview',
             'func': col_preview,
-            'onlyfull': True
+            'onlyfull': True,
+            'align': 'left'
         }
     ]
     return fdefs
@@ -384,7 +433,7 @@ def buildrow(fname, full=False):
             (
                 rec['func'](rowinfo) if
                 shouldbuild(rec, full=full) else
-                None
+                ''
             )
         )
     )
@@ -472,7 +521,8 @@ def getfiles(full=False):
     files = os.listdir('./')
     processed = processrows(files, full=full)
     sfiles = sorted(processed, key=sortfile, reverse=False)
-    return sfiles
+    out = list(sfiles)
+    return out
 
 
 def pagedisplay(output):
@@ -506,6 +556,18 @@ def pagedisplay(output):
             pager.terminate()
             pager.wait()
     return True
+
+
+def getcolpaddings(rows):
+    longest = {}
+    for row in rows:
+        for colname, colval in row['render'].items():
+            if colname not in longest:
+                longest[colname] = 0
+            collen = len(colval)
+            if collen > longest[colname]:
+                longest[colname] = collen
+    return longest
 
 
 def run(full=False):
