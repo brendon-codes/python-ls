@@ -36,6 +36,7 @@ COLOR_VALS = {
     'subfilecount': 'magenta',
     'acls': 'dark_gray',
     'owner': 'dark_gray',
+    'filetype': 'dark_gray',
     'size': 'magenta',
     'preview': 'dark_gray',
     'default': 'light_magenta'
@@ -47,9 +48,9 @@ PREVIEW_TRUNC_LEN = 48
 
 
 def sortfile(row):
-    fname = row['name']
+    fname = row['info']['fname']
     lowfname = fname.strip().lower()
-    key = 0 if os.path.isdir(fname) else 1
+    key = 0 if (row['info']['ftype'] == 'directory') else 1
     out = (key, lowfname)
     return out
 
@@ -58,7 +59,7 @@ def makecolor(row, field):
     if field == 'targetname':
         clr = 'targetname'
     elif field == 'srcname':
-        if row['ftype'] == 'directory':
+        if row['info']['ftype'] == 'directory':
             clr = 'srcname_directory'
         else:
             clr = 'srcname_file'
@@ -72,12 +73,14 @@ def makecolor(row, field):
         clr = 'owner'
     elif field == 'size':
         clr = 'size'
+    elif field == 'filetype':
+        clr = 'filetype'
     elif field == 'preview':
         clr = 'preview'
     else:
         clr = 'default'
     clrval = COLOR_VALS[clr]
-    out = addcolor(row[field], clrval)
+    out = addcolor(row['render'][field], clrval)
     return out
 
 
@@ -91,6 +94,7 @@ def getcolslisting(full=False):
     if full:
         out.append('acls')
         out.append('owner')
+        out.append('filetype')
     out.append('size')
     out.append('subfilecount')
     out.append('timeiso')
@@ -121,7 +125,9 @@ def renderrows(files, full=False):
     return out
 
 
-def col_acls(fname, stat_res):
+def col_acls(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
     t_no = '-'
     #all_acls_mode = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
     all_acls_mode = stat.filemode(stat_res.st_mode)
@@ -140,31 +146,34 @@ def col_acls(fname, stat_res):
     return ret
 
 
-def col_owner(fname, stat_res):
+def col_owner(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
     owner = pwd.getpwuid(stat_res.st_uid).pw_name
     group = grp.getgrgid(stat_res.st_gid).gr_name
     ret = ':'.join([owner, group])
     return ret
 
 
-def col_size(fname, stat_res):
+def col_size(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
     ret = '{:,}'.format(stat_res.st_size)
     return ret
 
 
-def col_timeiso(fname, stat_res):
+def col_timeiso(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
     dt = datetime.datetime.fromtimestamp(stat_res.st_mtime)
     ret = dt.strftime('%Y-%m-%d %H:%M:%S')
     return ret
 
 
-def col_timeepoch(fname, stat_res):
-    ret = str(stat_res.st_mtime)
-    return ret
-
-
-def col_srcname(fname, stat_res):
-    isdir = os.path.isdir(fname)
+def col_srcname(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
+    isdir = rowinfo['ftype'] == 'directory'
     if isdir:
         target = ''.join([fname, '/'])
     else:
@@ -173,11 +182,13 @@ def col_srcname(fname, stat_res):
     return ret
 
 
-def col_targetname(fname, stat_res):
+def col_targetname(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
     islink = os.path.islink(fname)
     if islink:
         real = os.path.relpath(os.path.realpath(fname))
-        isdir = os.path.isdir(real)
+        isdir = rowinfo['ftype'] == 'directory'
         if isdir:
             target = ''.join([real, '/'])
         else:
@@ -188,24 +199,9 @@ def col_targetname(fname, stat_res):
     return ret
 
 
-def col_name(fname, stat_res):
-    return fname
-
-
-def col_ftype(fname, stat_res):
-    if os.path.islink(fname):
-        real = os.path.relpath(os.path.realpath(fname))
-    else:
-        real = fname
-    if os.path.isdir(real):
-        ret = 'directory'
-    else:
-        ret = 'file'
-    return ret
-
-
-
-def col_subfilecount(fname, stat_res):
+def col_subfilecount(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
     real = None
     islink = os.path.islink(fname)
     isdir = False
@@ -220,30 +216,25 @@ def col_subfilecount(fname, stat_res):
     return str(len(os.listdir(real)))
 
 
-def col_preview(fname, stat_res):
-    if os.path.isdir(fname):
-        return ' '
-    if not os.access(fname, os.R_OK):
-        return ' '
-    fileinfo = getfileinfo(fname)
-    ##
-    ## Binary Executable such as ELF
-    ##
-    if fileinfo == 'binary_executable':
-        return ' '
-    ##
-    ## Some other binary such as image
-    ##
-    if fileinfo == 'binary_other':
+def col_filetype(rowinfo):
+    contenttype = rowinfo['contenttype']
+    if contenttype == 'binary_executable':
+        return 'exe'
+    if contenttype == 'binary_other':
+        return 'bin'
+    if contenttype == 'text':
+        return 'txt'
+    return '---'
+
+
+def col_preview(rowinfo):
+    fname = rowinfo['fname']
+    stat_res = rowinfo['stat_res']
+    contenttype = rowinfo['contenttype']
+    if contenttype == 'binary_other':
         return preview_binary(fname)
-    ##
-    ## If is text
-    ##
-    if fileinfo == 'text':
+    if contenttype == 'text':
         return preview_text(fname)
-    ##
-    ## Something else
-    ##
     return ' '
 
 
@@ -330,11 +321,6 @@ def getfileinfo(fname):
 def getrowdefs():
     fdefs = [
         {
-            'name': 'ftype',
-            'func': col_ftype,
-            'onlyfull': False
-        },
-        {
             'name': 'acls',
             'func': col_acls,
             'onlyfull': True
@@ -342,6 +328,11 @@ def getrowdefs():
         {
             'name': 'owner',
             'func': col_owner,
+            'onlyfull': True
+        },
+        {
+            'name': 'filetype',
+            'func': col_filetype,
             'onlyfull': True
         },
         {
@@ -355,11 +346,6 @@ def getrowdefs():
             'onlyfull': False
         },
         {
-            'name': 'timeepoch',
-            'func': col_timeepoch,
-            'onlyfull': False
-        },
-        {
             'name': 'srcname',
             'func': col_srcname,
             'onlyfull': False
@@ -367,11 +353,6 @@ def getrowdefs():
         {
             'name': 'targetname',
             'func': col_targetname,
-            'onlyfull': False
-        },
-        {
-            'name': 'name',
-            'func': col_name,
             'onlyfull': False
         },
         {
@@ -395,20 +376,77 @@ def shouldbuild(defrec, full=False):
 
 
 def buildrow(fname, full=False):
-    stat_res = os.lstat(fname)
+    rowinfo = getrowinfo(fname)
     fdefs = getrowdefs()
     func = (
         lambda rec: (
             rec['name'],
             (
-                rec['func'](fname, stat_res) if
+                rec['func'](rowinfo) if
                 shouldbuild(rec, full=full) else
                 None
             )
         )
     )
-    row = dict(map(func, fdefs))
+    row = {}
+    row['info'] = rowinfo
+    row['render'] = dict(map(func, fdefs))
     return row;
+
+
+def info_ftype(fname, stat_res):
+    if os.path.islink(fname):
+        real = os.path.relpath(os.path.realpath(fname))
+    else:
+        real = fname
+    if os.path.isdir(real):
+        ret = 'directory'
+    else:
+        ret = 'file'
+    return ret
+
+
+def info_timeepoch(fname, stat_res):
+    ret = str(stat_res.st_mtime)
+    return ret
+
+
+def info_contenttype(fname, stat_res):
+    if os.path.isdir(fname):
+        return 'not_applicable'
+    if not os.access(fname, os.R_OK):
+        return 'not_readable'
+    fileinfo = getfileinfo(fname)
+    ##
+    ## Binary Executable such as ELF
+    ##
+    if fileinfo == 'binary_executable':
+        return 'binary_executable'
+    ##
+    ## Some other binary such as image
+    ##
+    if fileinfo == 'binary_other':
+        return 'binary_other'
+    ##
+    ## If is text
+    ##
+    if fileinfo == 'text':
+        return 'text'
+    ##
+    ## Something else
+    ##
+    return 'other'
+
+
+def getrowinfo(fname):
+    stat_res = os.lstat(fname)
+    info = {}
+    info['fname'] = fname
+    info['stat_res'] = stat_res
+    info['ftype'] = info_ftype(fname, stat_res)
+    info['contenttype'] = info_contenttype(fname, stat_res)
+    info['timeepoch'] = info_timeepoch(fname, stat_res)
+    return info
 
 
 def processrows(files, full=False):
