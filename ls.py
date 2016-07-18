@@ -353,15 +353,14 @@ def processrows(files, full=False):
     return out
 
 
-def encode_output(data):
+def concatoutput(data):
     formatted = ''.join(['\n', data, '\n', '\n'])
-    encoded = formatted.encode('utf-8')
-    return encoded
+    return formatted
 
 
 def display(rows):
-    encoded = encode_output(rows)
-    pagedisplay(encoded)
+    formatted = concatoutput(rows)
+    pagedisplay(formatted)
     return True
 
 
@@ -391,9 +390,10 @@ def pagedisplay(output):
             stdout=sys.stdout
         )
     )
+    encoded = output.encode('utf-8')
     with proc() as pager:
         try:
-            pager.communicate(output)
+            pager.communicate(encoded)
             pager.stdin.close()
             pager.wait()
         except KeyboardInterrupt:
