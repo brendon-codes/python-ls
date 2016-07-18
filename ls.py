@@ -49,8 +49,8 @@ PREVIEW_TRUNC_LEN = 48
 def sortfile(row):
     fname = row['name']
     lowfname = fname.strip().lower()
-    key = '0' if os.path.isdir(fname) else '1'
-    out = ':'.join([key, lowfname])
+    key = 0 if os.path.isdir(fname) else 1
+    out = (key, lowfname)
     return out
 
 
