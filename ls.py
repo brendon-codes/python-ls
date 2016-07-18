@@ -225,14 +225,50 @@ def col_preview(fname, stat_res):
         return ' '
     if not os.access(fname, os.R_OK):
         return ' '
+    ##
+    ## If is binary
+    ##
     if not istextfile(fname):
+        return preview_binary(fname)
+    ##
+    ## If is text
+    ##
+    return preview_text(fname)
+
+
+def preview_binary(fname):
+    inrange = (
+        lambda a: (
+            (a >= 0x0021 and a <= 0x007E) or
+            (a >= 0x0009 and a <= 0x000D)
+        )
+    )
+    data = None
+    with open(fname, 'rb') as fh:
+        data = fh.read(PREVIEW_READ_LEN)
+    if len(data) == 0:
         return ' '
+    newdata = ''.join(map(chr, filter(inrange, data)))
+    stripped = newdata.strip()
+    cleaned = re.sub('(?u)[\s]+', ' ', stripped)
+    truncated = cleaned[:PREVIEW_TRUNC_LEN]
+    return truncated
+
+
+def preview_text(fname):
     data = None
     with open(fname, 'rt', errors='replace') as fh:
         data = fh.read(PREVIEW_READ_LEN)
     if len(data) == 0:
         return ' '
-    pat = r'(?u)[^\u0021-\u0126]+'
+    ##
+    ## Match
+    ##
+    ## * First 32 characters of ascii
+    ## * The DEL character
+    ## * Anything that is a whitespace
+    ##
+    pat = r'(?u)[\u0000-\u0020\u0127\s]+'
     cleaned = re.sub(pat, ' ', data).strip()
     truncated = cleaned[:PREVIEW_TRUNC_LEN]
     return truncated
