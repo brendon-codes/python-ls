@@ -47,6 +47,8 @@ COLOR_VALS = {
 PREVIEW_READ_LEN = 256
 PREVIEW_TRUNC_LEN = 48
 
+DEFAULT_START_PATH = './'
+
 
 def sortfile(row):
     fname = row['info']['fname']
@@ -558,9 +560,45 @@ def display(rows):
     return True
 
 
-def getfiles(full=False):
-    files = os.listdir('./')
-    processed = processrows(files, full=full)
+def get_dir_listing(start=None, filtres=None):
+    if start is None:
+        start = './'
+    if start != './':
+        start = os.path.relpath(start)
+    joinit = (
+        lambda f: (
+            os.path.join(
+                (
+                    start[2:] if
+                    (start[:2] == './') else
+                    start
+                ),
+                f
+            )
+        )
+    )
+    filterit = (
+        lambda f: (
+            filtres in f
+        )
+    )
+    if not os.path.exists(start):
+        return None
+    files = os.listdir(start)
+    fpaths = (
+        iter(files) if
+        (filtres is None) else
+        filter(filterit, files)
+    )
+    paths = map(joinit, fpaths)
+    return paths
+
+
+def getfiles(start=None, full=False, filtres=None):
+    paths = get_dir_listing(start=start, filtres=filtres)
+    if paths is None:
+        return None
+    processed = processrows(paths, full=full)
     sfiles = sorted(processed, key=sortfile, reverse=False)
     out = list(sfiles)
     return out
@@ -611,16 +649,42 @@ def getcolpaddings(rows):
     return longest
 
 
-def run(full=False):
-    files = getfiles(full=full)
+def run(start=None, full=False, filtres=None):
+    files = getfiles(start=start, full=full, filtres=filtres)
+    if files is None:
+        rendererror()
+        return False
     rows = renderrows(files, full=full)
     display(rows)
     return True
 
 
+def rendererror():
+    sys.stdout.write("File or directory not found.\n")
+    return True
+
 
 def getargs():
     arger = argparse.ArgumentParser(description='Replacement for ls')
+    arger.add_argument(
+        'start',
+        metavar='STARTPATH',
+        type=str,
+        nargs='?',
+        help='Starting Path',
+        default=DEFAULT_START_PATH,
+        action='store'
+    )
+    arger.add_argument(
+        '-g',
+        '--filter',
+        metavar='FILTERSTR',
+        type=str,
+        help='Filter Results',
+        dest='filtres',
+        default=None,
+        action='store'
+    )
     arger.add_argument(
         '-f',
         '--full',
@@ -636,7 +700,15 @@ def getargs():
 
 def main():
     args = getargs()
-    run(full=args.full)
+    ret = (
+        run(
+            start=args.start,
+            full=args.full,
+            filtres=args.filtres
+        )
+    )
+    if ret is False:
+        return 1
     return 0
 
 
