@@ -86,20 +86,22 @@ def getcolordefs(row, field):
     return clr
 
 
-def addpadding(field, val, colpaddings):
+def addpadding(field, val, colpaddings, align):
     if len(val) == 0:
         return ''
+    alignchar = '>' if (align == 'right') else '<'
     padlen = colpaddings[field]
-    padstr = ''.join(['{:', str(padlen), 's}'])
+    padstr = ''.join(['{:', alignchar, str(padlen), 's}'])
     ret = padstr.format(val)
     return ret
 
 
-def makepretty(row, field, colpaddings):
+def makepretty(row, field, colpaddings, fdefs):
+    align = fdefs[field]['align']
     clr = getcolordefs(row, field)
     clrval = COLOR_VALS[clr]
     textval = row['render'][field]
-    paddedval = addpadding(field, textval, colpaddings)
+    paddedval = addpadding(field, textval, colpaddings, align)
     colorval = addcolor(paddedval, clrval)
     return colorval
 
@@ -124,9 +126,9 @@ def getcolslisting(full=False):
     return out
 
 
-def structurecols(row, colpaddings, full=False):
+def structurecols(row, colpaddings, fdefs, full=False):
     colslisting = getcolslisting(full=full)
-    func = lambda name: makepretty(row, name, colpaddings)
+    func = lambda name: makepretty(row, name, colpaddings, fdefs)
     ret = map(func, colslisting)
     return ret
 
@@ -142,16 +144,17 @@ def padcols(row, colpaddings):
     return ret
 
 
-def rendercols(row, colpaddings, full=False):
+def rendercols(row, colpaddings, fdefs, full=False):
     margin = '   '
-    structcols = structurecols(row, colpaddings, full=full)
+    structcols = structurecols(row, colpaddings, fdefs, full=full)
     ret = ''.join([margin, margin.join(structcols)])
     return ret
 
 
 def renderrows(files, full=False):
     colpaddings = getcolpaddings(files)
-    renderer = lambda r: rendercols(r, colpaddings, full=full)
+    fdefs = getrowdefs()
+    renderer = lambda r: rendercols(r, colpaddings, fdefs, full=full)
     out = '\n'.join(map(renderer, files))
     return out
 
@@ -264,6 +267,8 @@ def getsubfilecount(rowinfo):
 
 def col_filetype(rowinfo):
     contenttype = rowinfo['contenttype']
+    if contenttype == 'directory':
+        return 'd'
     if contenttype == 'binary_executable':
         return 'e'
     if contenttype == 'binary_other':
@@ -365,56 +370,56 @@ def getfileinfo(fname):
 
 
 def getrowdefs():
-    fdefs = [
-        {
+    fdefs = {
+        'acls': {
             'name': 'acls',
             'func': col_acls,
             'onlyfull': True,
             'align': 'left'
         },
-        {
+        'owner': {
             'name': 'owner',
             'func': col_owner,
             'onlyfull': True,
             'align': 'left'
         },
-        {
+        'filetype': {
             'name': 'filetype',
             'func': col_filetype,
             'onlyfull': True,
             'align': 'left'
         },
-        {
+        'size': {
             'name': 'size',
             'func': col_size,
             'onlyfull': False,
             'align': 'right'
         },
-        {
+        'timeiso': {
             'name': 'timeiso',
             'func': col_timeiso,
             'onlyfull': False,
             'align': 'left'
         },
-        {
+        'srcname': {
             'name': 'srcname',
             'func': col_srcname,
             'onlyfull': False,
             'align': 'left'
         },
-        {
+        'targetname': {
             'name': 'targetname',
             'func': col_targetname,
             'onlyfull': False,
             'align': 'left'
         },
-        {
+        'preview': {
             'name': 'preview',
             'func': col_preview,
             'onlyfull': True,
             'align': 'left'
         }
-    ]
+    }
     return fdefs
 
 
@@ -424,9 +429,8 @@ def shouldbuild(defrec, full=False):
     return True
 
 
-def buildrow(fname, full=False):
+def buildrow(fname, fdefs, full=False):
     rowinfo = getrowinfo(fname)
-    fdefs = getrowdefs()
     func = (
         lambda rec: (
             rec['name'],
@@ -439,7 +443,7 @@ def buildrow(fname, full=False):
     )
     row = {}
     row['info'] = rowinfo
-    row['render'] = dict(map(func, fdefs))
+    row['render'] = dict(map(func, fdefs.values()))
     return row;
 
 
@@ -462,7 +466,7 @@ def info_timeepoch(fname, stat_res):
 
 def info_contenttype(fname, stat_res):
     if os.path.isdir(fname):
-        return 'not_applicable'
+        return 'directory'
     if not os.access(fname, os.R_OK):
         return 'not_readable'
     if stat_res.st_size == 0:
@@ -501,7 +505,8 @@ def getrowinfo(fname):
 
 
 def processrows(files, full=False):
-    func = lambda fname: buildrow(fname, full=full)
+    fdefs = getrowdefs()
+    func = lambda fname: buildrow(fname, fdefs, full=full)
     out = map(func, files)
     return out
 
