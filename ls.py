@@ -88,7 +88,7 @@ def getcolordefs(row, field):
 
 def addpadding(field, val, colpaddings, align):
     if len(val) == 0:
-        return ''
+        return ' '
     alignchar = '>' if (align == 'right') else '<'
     padlen = colpaddings[field]
     padstr = ''.join(['{:', alignchar, str(padlen), 's}'])
@@ -145,7 +145,7 @@ def padcols(row, colpaddings):
 
 
 def rendercols(row, colpaddings, fdefs, full=False):
-    margin = '   '
+    margin = '  '
     structcols = structurecols(row, colpaddings, fdefs, full=full)
     ret = ''.join([margin, margin.join(structcols)])
     return ret
@@ -244,7 +244,7 @@ def col_targetname(rowinfo):
             target = real
         ret = target
     else:
-        ret = ''
+        ret = ' '
     return ret
 
 
@@ -288,7 +288,7 @@ def col_preview(rowinfo):
         return preview_binary(fname)
     if contenttype == 'text':
         return preview_text(fname)
-    return ''
+    return ' '
 
 
 def preview_directory(fname):
@@ -336,7 +336,7 @@ def preview_binary(fname):
     with open(fname, 'rb') as fh:
         data = fh.read(PREVIEW_READ_LEN)
     if len(data) == 0:
-        return ''
+        return ' '
     newdata = ''.join(map(chr, filter(inrange, data)))
     stripped = newdata.strip()
     cleaned = re.sub('(?u)[\s]+', ' ', stripped)
@@ -349,7 +349,7 @@ def preview_text(fname):
     with open(fname, 'rt', errors='replace') as fh:
         data = fh.read(PREVIEW_READ_LEN)
     if len(data) == 0:
-        return ''
+        return ' '
     ##
     ## Match
     ##
@@ -473,7 +473,7 @@ def buildrow(fname, fdefs, full=False):
             (
                 rec['func'](rowinfo) if
                 shouldbuild(rec, full=full) else
-                ''
+                ' '
             )
         )
     )
