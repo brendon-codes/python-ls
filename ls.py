@@ -282,11 +282,47 @@ def col_preview(rowinfo):
     fname = rowinfo['fname']
     stat_res = rowinfo['stat_res']
     contenttype = rowinfo['contenttype']
+    if contenttype == 'directory':
+        return preview_directory(fname)
     if contenttype == 'binary_other':
         return preview_binary(fname)
     if contenttype == 'text':
         return preview_text(fname)
     return ''
+
+
+def preview_directory(fname):
+
+    def func(subfname):
+        checkfname = os.path.join(fname, subfname)
+        if os.path.islink(checkfname):
+            real = os.path.relpath(os.path.realpath(checkfname))
+        else:
+            real = checkfname
+        if os.path.isdir(real):
+            path = ''.join([checkfname, '/'])
+        else:
+            path = checkfname
+        stripped = path[(len(fname) + 1):]
+        return stripped
+
+    all_files = os.listdir(fname)
+    all_len = len(all_files)
+    sub_files = list(map(func, all_files[:32]))
+    sub_len = len(sub_files)
+    txt = ' '.join(sub_files)
+    truncated = txt[:38]
+    lastindex = truncated.rfind(' ')
+    cleaned = (
+        truncated if
+        (lastindex < 1) else
+        truncated[:lastindex]
+    )
+    if sub_len < all_len:
+        ret = ' '.join([cleaned, '...'])
+    else:
+        ret = cleaned
+    return ret
 
 
 def preview_binary(fname):
