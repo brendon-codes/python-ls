@@ -582,7 +582,7 @@ def get_dir_listing(start=None, filtres=None):
             filtres in f
         )
     )
-    if not os.path.exists(start):
+    if (not os.path.exists(start)) or (not os.path.isdir(start)):
         return None
     files = os.listdir(start)
     fpaths = (
@@ -660,7 +660,7 @@ def run(start=None, full=False, filtres=None):
 
 
 def rendererror():
-    sys.stderr.write("File or directory not found.\n")
+    sys.stderr.write("Path could not be found, or path is not a directory.\n")
     return True
 
 
