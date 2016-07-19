@@ -660,7 +660,7 @@ def run(start=None, full=False, filtres=None):
 
 
 def rendererror():
-    sys.stdout.write("File or directory not found.\n")
+    sys.stderr.write("File or directory not found.\n")
     return True
 
 
