@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# pyright: strict
+
+from typing import TypedDict, Literal, Dict, List, Callable, Any, cast
 import re
 import sys
 import os
@@ -10,7 +13,56 @@ import datetime
 import argparse
 import subprocess
 from functools import reduce
-from pprint import pprint
+
+
+class StatRes:
+    st_mode: int
+    st_mtime: float
+    st_uid: int
+    st_gid: int
+    st_size: int
+
+
+FileType = Literal["file", "directory"]
+
+
+class FileRowInfo(TypedDict):
+    fname: str
+    ftype: FileType
+    stat_res: StatRes
+
+
+class FileRow(TypedDict):
+    info: FileRowInfo
+    render: Dict[str, str]
+
+
+FileRows = List[FileRow]
+
+
+Align = Literal["left", "right"]
+
+
+ColsType = Literal[
+    "acls", "owner", "filetype", "size",
+    "timeiso", "srcname", "targetname", "preview"
+]
+
+
+ColsTypes = List[ColsType]
+
+
+class FileDef(TypedDict):
+    align: Align
+    name: ColsType
+    onlyfull: bool
+    func: Callable[[Any], str]
+
+
+ColPaddings = Dict[str, int]
+
+
+FileDefs = Dict[ColsType, FileDef]
 
 
 COLORS = {
@@ -50,7 +102,7 @@ PREVIEW_TRUNC_LEN = 48
 DEFAULT_START_PATH = './'
 
 
-def sortfile(row):
+def sortfile(row: FileRow):
     fname = row['info']['fname']
     lowfname = fname.strip().lower()
     key = 0 if (row['info']['ftype'] == 'directory') else 1
@@ -58,37 +110,33 @@ def sortfile(row):
     return out
 
 
-def getcolordefs(row, field):
+def getcolordefs(row: FileRow, field: str):
     if field == 'targetname':
-        clr = 'targetname'
-    elif field == 'srcname':
+        return 'targetname'
+    if field == 'srcname':
         if row['info']['ftype'] == 'directory':
-            clr = 'srcname_directory'
-        else:
-            clr = 'srcname_file'
-    elif field == 'timeiso':
-        clr = 'time'
-    elif field == 'size':
+            return 'srcname_directory'
+        return 'srcname_file'
+    if field == 'timeiso':
+        return 'time'
+    if field == 'size':
         if row['info']['ftype'] == 'directory':
-            clr = 'size_filecount'
-        else:
-            clr = 'size_bytes'
-    elif field == 'acls':
-        clr = 'acls'
-    elif field == 'owner':
-        clr = 'owner'
-    elif field == 'size':
-        clr = 'size'
-    elif field == 'filetype':
-        clr = 'filetype'
-    elif field == 'preview':
-        clr = 'preview'
-    else:
-        clr = 'default'
-    return clr
+            return 'size_filecount'
+        return 'size_bytes'
+    if field == 'acls':
+        return 'acls'
+    if field == 'owner':
+        return 'owner'
+    if field == 'size':
+        return 'size'
+    if field == 'filetype':
+        return 'filetype'
+    if field == 'preview':
+        return 'preview'
+    return 'default'
 
 
-def addpadding(field, val, colpaddings, align):
+def addpadding(field: str, val: str, colpaddings: ColPaddings, align: Align):
     if len(val) == 0:
         return ' '
     alignchar = '>' if (align == 'right') else '<'
@@ -98,7 +146,7 @@ def addpadding(field, val, colpaddings, align):
     return ret
 
 
-def makepretty(row, field, colpaddings, fdefs):
+def makepretty(row: FileRow, field: str, colpaddings: ColPaddings, fdefs: FileDefs):
     align = fdefs[field]['align']
     clr = getcolordefs(row, field)
     clrval = COLOR_VALS[clr]
@@ -108,13 +156,13 @@ def makepretty(row, field, colpaddings, fdefs):
     return colorval
 
 
-def addcolor(text, color):
-    out = text.join([COLORS[color], COLORS['end']])
+def addcolor(text: str, color: str):
+    return text.join([COLORS[color], COLORS['end']])
     return out
 
 
-def getcolslisting(full=False):
-    out = []
+def getcolslisting(full: bool=False):
+    out: ColsTypes = []
     if full:
         out.append('acls')
         out.append('owner')
@@ -128,40 +176,92 @@ def getcolslisting(full=False):
     return out
 
 
-def structurecols(row, colpaddings, fdefs, full=False):
+def structurecols(row: FileRow, colpaddings: ColPaddings, fdefs: FileDefs, full: bool=False):
     colslisting = getcolslisting(full=full)
-    func = lambda name: makepretty(row, name, colpaddings, fdefs)
-    ret = map(func, colslisting)
-    return ret
+    return map(lambda name: makepretty(row, name, colpaddings, fdefs), colslisting)
 
 
-def padcols(row, colpaddings):
-    print()
-    ret = (
-        map(
-            lambda rec: padcol(rec[0], rec[1], colpaddings),
-            row['render'].items()
-        )
-    )
-    return ret
-
-
-def rendercols(row, colpaddings, fdefs, full=False):
+def rendercols(row: FileRow, colpaddings: ColPaddings, fdefs: FileDefs, full: bool=False):
     margin = '  '
     structcols = structurecols(row, colpaddings, fdefs, full=full)
-    ret = ''.join([margin, margin.join(structcols)])
+    return ''.join([margin, margin.join(structcols)])
+
+
+def getcolpaddings(rows: FileRows):
+    longest: Dict[str, int] = {}
+    for row in rows:
+        for colname, colval in row['render'].items():
+            if colname not in longest:
+                longest[colname] = 0
+            collen = len(colval)
+            if collen > longest[colname]:
+                longest[colname] = collen
+    return longest
+
+
+def getrowdefs():
+    ret: FileDefs = {
+        'acls': {
+            'name': 'acls',
+            'func': col_acls,
+            'onlyfull': True,
+            'align': 'left'
+        },
+        'owner': {
+            'name': 'owner',
+            'func': col_owner,
+            'onlyfull': True,
+            'align': 'left'
+        },
+        'filetype': {
+            'name': 'filetype',
+            'func': col_filetype,
+            'onlyfull': True,
+            'align': 'left'
+        },
+        'size': {
+            'name': 'size',
+            'func': col_size,
+            'onlyfull': False,
+            'align': 'right'
+        },
+        'timeiso': {
+            'name': 'timeiso',
+            'func': col_timeiso,
+            'onlyfull': False,
+            'align': 'left'
+        },
+        'srcname': {
+            'name': 'srcname',
+            'func': col_srcname,
+            'onlyfull': False,
+            'align': 'left'
+        },
+        'targetname': {
+            'name': 'targetname',
+            'func': col_targetname,
+            'onlyfull': False,
+            'align': 'left'
+        },
+        'preview': {
+            'name': 'preview',
+            'func': col_preview,
+            'onlyfull': True,
+            'align': 'left'
+        }
+    }
     return ret
 
 
-def renderrows(files, full=False):
-    colpaddings = getcolpaddings(files)
+def renderrows(rows: FileRows, full: bool=False):
+    colpaddings = getcolpaddings(rows)
     fdefs = getrowdefs()
-    renderer = lambda r: rendercols(r, colpaddings, fdefs, full=full)
-    out = '\n'.join(map(renderer, files))
+    rendered = map(lambda r: rendercols(r, colpaddings, fdefs, full=full), rows)
+    out = '\n'.join(rendered)
     return out
 
 
-def get_acls_me(fname, stat_res):
+def get_acls_me(fname: str, stat_res: StatRes):
     t_no = 0
     me_can_read = os.access(fname, os.R_OK)
     me_can_write = os.access(fname, os.W_OK)
@@ -177,23 +277,19 @@ def get_acls_me(fname, stat_res):
     return me_acls_mode
 
 
-def get_acls_all(fname, stat_res):
-    #all_acls_mode = stat.filemode(stat_res.st_mode)
-    all_acls_mode = str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
-    return all_acls_mode
+def get_acls_all(fname: str, stat_res: StatRes):
+    return str(oct(stat.S_IMODE(stat_res.st_mode)))[-3:]
 
 
-def col_acls(rowinfo):
+def col_acls(rowinfo: FileRowInfo):
     fname = rowinfo['fname']
     stat_res = rowinfo['stat_res']
     all_acls_mode = get_acls_all(fname, stat_res)
     me_acls_mode = get_acls_me(fname, stat_res)
-    ret = ' '.join([all_acls_mode, me_acls_mode])
-    return ret
+    return ' '.join([all_acls_mode, me_acls_mode])
 
 
-def col_owner(rowinfo):
-    fname = rowinfo['fname']
+def col_owner(rowinfo: FileRowInfo):
     stat_res = rowinfo['stat_res']
     owner = pwd.getpwuid(stat_res.st_uid).pw_name
     group = grp.getgrgid(stat_res.st_gid).gr_name
@@ -201,24 +297,22 @@ def col_owner(rowinfo):
     return ret
 
 
-def getfilesize(rowinfo):
+def getfilesize(rowinfo: FileRowInfo):
     stat_res = rowinfo['stat_res']
     ret = '{:,}'.format(stat_res.st_size)
     return ret
 
 
-def col_size(rowinfo):
+def col_size(rowinfo: FileRowInfo):
     if rowinfo['ftype'] == 'directory':
         return getsubfilecount(rowinfo)
     return getfilesize(rowinfo)
 
 
-def col_timeiso(rowinfo):
-    fname = rowinfo['fname']
+def col_timeiso(rowinfo: FileRowInfo):
     stat_res = rowinfo['stat_res']
     dt = datetime.datetime.fromtimestamp(stat_res.st_mtime)
-    ret = dt.strftime('%Y-%m-%d %H:%M:%S')
-    return ret
+    return dt.strftime('%Y-%m-%d %H:%M:%S')
 
 
 def col_srcname(rowinfo):
@@ -407,59 +501,6 @@ def getfileinfo(fname):
     return 'binary_other'
 
 
-def getrowdefs():
-    fdefs = {
-        'acls': {
-            'name': 'acls',
-            'func': col_acls,
-            'onlyfull': True,
-            'align': 'left'
-        },
-        'owner': {
-            'name': 'owner',
-            'func': col_owner,
-            'onlyfull': True,
-            'align': 'left'
-        },
-        'filetype': {
-            'name': 'filetype',
-            'func': col_filetype,
-            'onlyfull': True,
-            'align': 'left'
-        },
-        'size': {
-            'name': 'size',
-            'func': col_size,
-            'onlyfull': False,
-            'align': 'right'
-        },
-        'timeiso': {
-            'name': 'timeiso',
-            'func': col_timeiso,
-            'onlyfull': False,
-            'align': 'left'
-        },
-        'srcname': {
-            'name': 'srcname',
-            'func': col_srcname,
-            'onlyfull': False,
-            'align': 'left'
-        },
-        'targetname': {
-            'name': 'targetname',
-            'func': col_targetname,
-            'onlyfull': False,
-            'align': 'left'
-        },
-        'preview': {
-            'name': 'preview',
-            'func': col_preview,
-            'onlyfull': True,
-            'align': 'left'
-        }
-    }
-    return fdefs
-
 
 def shouldbuild(defrec, full=False):
     if defrec['onlyfull'] and (not full):
@@ -497,7 +538,7 @@ def info_ftype(fname, stat_res):
     return ret
 
 
-def info_timeepoch(fname, stat_res):
+def info_timeepoch(fname: str, stat_res: StatRes):
     ret = str(stat_res.st_mtime)
     return ret
 
@@ -531,15 +572,15 @@ def info_contenttype(fname, stat_res):
     return 'other'
 
 
-def getrowinfo(fname):
-    stat_res = os.lstat(fname)
-    info = {}
-    info['fname'] = fname
-    info['stat_res'] = stat_res
-    info['ftype'] = info_ftype(fname, stat_res)
-    info['contenttype'] = info_contenttype(fname, stat_res)
-    info['timeepoch'] = info_timeepoch(fname, stat_res)
-    return info
+def getrowinfo(fname: str):
+    stat_res = cast(StatRes, os.lstat(fname))
+    return {
+        'fname': fname,
+        'stat_res': stat_res,
+        'ftype': info_ftype(fname, stat_res),
+        'contenttype': info_contenttype(fname, stat_res),
+        'timeepoch': info_timeepoch(fname, stat_res)
+    }
 
 
 def processrows(files, full=False):
@@ -635,18 +676,6 @@ def pagedisplay(output):
             pager.terminate()
             pager.wait()
     return True
-
-
-def getcolpaddings(rows):
-    longest = {}
-    for row in rows:
-        for colname, colval in row['render'].items():
-            if colname not in longest:
-                longest[colname] = 0
-            collen = len(colval)
-            if collen > longest[colname]:
-                longest[colname] = collen
-    return longest
 
 
 def run(start=None, full=False, filtres=None):
