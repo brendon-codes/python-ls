@@ -2,7 +2,7 @@
 
 # pyright: strict
 
-from typing import TypedDict, Literal, Dict, List, Callable, Any, cast
+from typing import TypedDict, Literal, Dict, List, Callable, Any, cast, Optional
 import re
 import sys
 import os
@@ -25,11 +25,20 @@ class StatRes:
 
 FileType = Literal["file", "directory"]
 
+ContentType = Literal[
+    "directory",
+    "binary_executable",
+    "binary_other",
+    "text",
+    "unknown"
+]
+
 
 class FileRowInfo(TypedDict):
     fname: str
     ftype: FileType
     stat_res: StatRes
+    contenttype: ContentType
 
 
 class FileRow(TypedDict):
@@ -315,45 +324,26 @@ def col_timeiso(rowinfo: FileRowInfo):
     return dt.strftime('%Y-%m-%d %H:%M:%S')
 
 
-def col_srcname(rowinfo):
+def col_srcname(rowinfo: FileRowInfo):
     fname = rowinfo['fname']
-    stat_res = rowinfo['stat_res']
     isdir = rowinfo['ftype'] == 'directory'
-    if isdir:
-        target = ''.join([fname, '/'])
-    else:
-        target = fname
-    ret = target
-    return ret
+    return ''.join([fname, '/']) if isdir else fname
 
 
-def col_targetname(rowinfo):
+def col_targetname(rowinfo: FileRowInfo):
     fname = rowinfo['fname']
-    stat_res = rowinfo['stat_res']
     islink = os.path.islink(fname)
     if islink:
         real = os.path.relpath(os.path.realpath(fname))
         isdir = rowinfo['ftype'] == 'directory'
-        if isdir:
-            target = ''.join([real, '/'])
-        else:
-            target = real
-        ret = target
-    else:
-        ret = ' '
-    return ret
+        return ''.join([real, '/']) if isdir else real
+    return ' '
 
 
-def getsubfilecount(rowinfo):
+def getsubfilecount(rowinfo: FileRowInfo):
     fname = rowinfo['fname']
-    stat_res = rowinfo['stat_res']
-    real = None
     islink = os.path.islink(fname)
-    isdir = False
-    if islink:
-        real = os.path.relpath(os.path.realpath(fname))
-    else:
-        real = fname
+    real = os.path.relpath(os.path.realpath(fname)) if islink else fname
     if not os.path.isdir(real):
         return '-'
     if not os.access(real, os.R_OK):
@@ -361,7 +351,7 @@ def getsubfilecount(rowinfo):
     return str(len(os.listdir(real)))
 
 
-def col_filetype(rowinfo):
+def col_filetype(rowinfo: FileRowInfo):
     contenttype = rowinfo['contenttype']
     if contenttype == 'directory':
         return 'd'
@@ -371,12 +361,11 @@ def col_filetype(rowinfo):
         return 'b'
     if contenttype == 'text':
         return 't'
-    return '-'
+    return 'u'
 
 
-def col_preview(rowinfo):
+def col_preview(rowinfo: FileRowInfo):
     fname = rowinfo['fname']
-    stat_res = rowinfo['stat_res']
     contenttype = rowinfo['contenttype']
     if contenttype == 'directory':
         return preview_directory(fname)
@@ -387,24 +376,26 @@ def col_preview(rowinfo):
     return ' '
 
 
-def preview_directory(fname):
+def preview_directory(fname: str):
 
-    def func(subfname):
+    def _func(subfname: str):
         checkfname = os.path.join(fname, subfname)
-        if os.path.islink(checkfname):
-            real = os.path.relpath(os.path.realpath(checkfname))
-        else:
-            real = checkfname
-        if os.path.isdir(real):
-            path = ''.join([checkfname, '/'])
-        else:
-            path = checkfname
+        real = (
+            os.path.relpath(os.path.realpath(checkfname)) if
+            os.path.islink(checkfname) else
+            checkfname
+        )
+        path = (
+            ''.join([checkfname, '/']) if
+            os.path.isdir(real) else
+            checkfname
+        )
         stripped = path[(len(fname) + 1):]
         return stripped
 
     all_files = os.listdir(fname)
     all_len = len(all_files)
-    sub_files = list(map(func, all_files[:32]))
+    sub_files = list(map(_func, all_files[:32]))
     sub_len = len(sub_files)
     txt = ' '.join(sub_files)
     truncated = txt[:38]
@@ -414,34 +405,29 @@ def preview_directory(fname):
         (lastindex < 1) else
         truncated[:lastindex]
     )
-    if sub_len < all_len:
-        ret = ' '.join([cleaned, '...'])
-    else:
-        ret = cleaned
-    return ret
+    return ' '.join([cleaned, '...']) if sub_len < all_len else cleaned
 
 
-def preview_binary(fname):
-    inrange = (
-        lambda a: (
+def preview_binary(fname: str):
+    def _inrange(a: int):
+        return (
             (a >= 0x0021 and a <= 0x007E) or
             (a >= 0x0009 and a <= 0x000D)
         )
-    )
-    data = None
+
+    data: bytes
     with open(fname, 'rb') as fh:
         data = fh.read(PREVIEW_READ_LEN)
     if len(data) == 0:
         return ' '
-    newdata = ''.join(map(chr, filter(inrange, data)))
+    newdata = ''.join(map(chr, filter(_inrange, data)))
     stripped = newdata.strip()
-    cleaned = re.sub('(?u)[\s]+', ' ', stripped)
-    truncated = cleaned[:PREVIEW_TRUNC_LEN]
-    return truncated
+    cleaned = re.sub(r"(?u)[\s]+", ' ', stripped)
+    return cleaned[:PREVIEW_TRUNC_LEN]
 
 
-def preview_text(fname):
-    data = None
+def preview_text(fname: str):
+    data: str
     with open(fname, 'rt', errors='replace') as fh:
         data = fh.read(PREVIEW_READ_LEN)
     if len(data) == 0:
@@ -455,35 +441,37 @@ def preview_text(fname):
     ##
     pat = r'(?u)[\u0000-\u0020\u0127\s]+'
     cleaned = re.sub(pat, ' ', data).strip()
-    truncated = cleaned[:PREVIEW_TRUNC_LEN]
-    return truncated
+    return cleaned[:PREVIEW_TRUNC_LEN]
 
 
-
-def getfileinfo(fname):
+def getfileinfo(fname: str):
     """
     See: http://stackoverflow.com/a/898759
     """
-    proc = lambda: (
-        subprocess.Popen(
-            [
-                'file',
-                '--mime',
-                '--dereference',
-                fname
-            ],
-            stdout=subprocess.PIPE
+    def _proc():
+        return (
+            subprocess.Popen(
+                [
+                    'file',
+                    '--mime',
+                    '--dereference',
+                    fname
+                ],
+                stdout=subprocess.PIPE
+            )
         )
-    )
-    rawdata = None
-    with proc() as subproc:
-        rawdata = subproc.stdout.read()
+
+    rawdata: Optional[bytes]
+    with _proc() as subproc:
+        rawdata = None if subproc.stdout is None else subproc.stdout.read()
+    if rawdata is None:
+        return cast(ContentType, "unknown")
     data = rawdata.decode('utf-8', errors='replace')
     ##
     ## First check if text
     ##
     if (re.search('(?u)[^a-zA-Z]text[^a-zA-Z]', data) is not None):
-        return 'text'
+        return cast(ContentType, 'text')
     ##
     ## Executable binary file such as ELF
     ##
@@ -494,24 +482,25 @@ def getfileinfo(fname):
             )
             is not None
     ):
-        return 'binary_executable'
+        return cast(ContentType, 'binary_executable')
     ##
     ## Some other binary file such as an image
     ##
-    return 'binary_other'
+    return cast(ContentType, 'binary_other')
 
 
 
-def shouldbuild(defrec, full=False):
+def shouldbuild(defrec: FileDef, full: bool=False):
     if defrec['onlyfull'] and (not full):
         return False
     return True
 
 
-def buildrow(fname, fdefs, full=False):
+def buildrow(fname: str, fdefs: FileDefs, full: bool=False):
     rowinfo = getrowinfo(fname)
-    func = (
-        lambda rec: (
+
+    def _func(rec: FileDef):
+        return (
             rec['name'],
             (
                 rec['func'](rowinfo) if
@@ -519,11 +508,12 @@ def buildrow(fname, fdefs, full=False):
                 ' '
             )
         )
-    )
-    row = {}
-    row['info'] = rowinfo
-    row['render'] = dict(map(func, fdefs.values()))
-    return row;
+
+    ret: FileRow = {
+        'info': rowinfo,
+        'render': dict(map(_func, fdefs.values()))
+    }
+    return ret
 
 
 def info_ftype(fname, stat_res):
@@ -574,13 +564,14 @@ def info_contenttype(fname, stat_res):
 
 def getrowinfo(fname: str):
     stat_res = cast(StatRes, os.lstat(fname))
-    return {
+    ret: FileRowInfo = {
         'fname': fname,
         'stat_res': stat_res,
         'ftype': info_ftype(fname, stat_res),
         'contenttype': info_contenttype(fname, stat_res),
         'timeepoch': info_timeepoch(fname, stat_res)
     }
+    return ret
 
 
 def processrows(files, full=False):
