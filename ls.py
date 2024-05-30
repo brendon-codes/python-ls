@@ -2,7 +2,17 @@
 
 # pyright: strict
 
-from typing import TypedDict, Literal, Dict, List, Callable, Any, cast, Optional
+from typing import (
+    TypedDict,
+    Literal,
+    Dict,
+    List,
+    Callable,
+    Any,
+    cast,
+    Optional as Opt,
+    Iterable as Iter
+)
 import re
 import sys
 import os
@@ -27,9 +37,12 @@ FileType = Literal["file", "directory"]
 
 ContentType = Literal[
     "directory",
+    "not_readable",
+    "empty",
     "binary_executable",
     "binary_other",
     "text",
+    "other",
     "unknown"
 ]
 
@@ -39,6 +52,7 @@ class FileRowInfo(TypedDict):
     ftype: FileType
     stat_res: StatRes
     contenttype: ContentType
+    timeepoch: str
 
 
 class FileRow(TypedDict):
@@ -155,7 +169,7 @@ def addpadding(field: str, val: str, colpaddings: ColPaddings, align: Align):
     return ret
 
 
-def makepretty(row: FileRow, field: str, colpaddings: ColPaddings, fdefs: FileDefs):
+def makepretty(row: FileRow, field: ColsType, colpaddings: ColPaddings, fdefs: FileDefs):
     align = fdefs[field]['align']
     clr = getcolordefs(row, field)
     clrval = COLOR_VALS[clr]
@@ -167,7 +181,6 @@ def makepretty(row: FileRow, field: str, colpaddings: ColPaddings, fdefs: FileDe
 
 def addcolor(text: str, color: str):
     return text.join([COLORS[color], COLORS['end']])
-    return out
 
 
 def getcolslisting(full: bool=False):
@@ -393,7 +406,10 @@ def preview_directory(fname: str):
         stripped = path[(len(fname) + 1):]
         return stripped
 
-    all_files = os.listdir(fname)
+    try:
+        all_files = os.listdir(fname)
+    except PermissionError:
+        return "-"
     all_len = len(all_files)
     sub_files = list(map(_func, all_files[:32]))
     sub_len = len(sub_files)
@@ -461,7 +477,7 @@ def getfileinfo(fname: str):
             )
         )
 
-    rawdata: Optional[bytes]
+    rawdata: Opt[bytes]
     with _proc() as subproc:
         rawdata = None if subproc.stdout is None else subproc.stdout.read()
     if rawdata is None:
@@ -516,24 +532,22 @@ def buildrow(fname: str, fdefs: FileDefs, full: bool=False):
     return ret
 
 
-def info_ftype(fname, stat_res):
-    if os.path.islink(fname):
-        real = os.path.relpath(os.path.realpath(fname))
-    else:
-        real = fname
+def info_ftype(fname: str, stat_res: StatRes):
+    real = (
+        os.path.relpath(os.path.realpath(fname)) if
+        os.path.islink(fname) else 
+        fname
+    )
     if os.path.isdir(real):
-        ret = 'directory'
-    else:
-        ret = 'file'
-    return ret
+        return 'directory'
+    return 'file'
 
 
 def info_timeepoch(fname: str, stat_res: StatRes):
-    ret = str(stat_res.st_mtime)
-    return ret
+    return str(stat_res.st_mtime)
 
 
-def info_contenttype(fname, stat_res):
+def info_contenttype(fname: str, stat_res: StatRes):
     if os.path.isdir(fname):
         return 'directory'
     if not os.access(fname, os.R_OK):
@@ -574,69 +588,50 @@ def getrowinfo(fname: str):
     return ret
 
 
-def processrows(files, full=False):
+def processrows(files: Iter[str], full: bool = False):
     fdefs = getrowdefs()
-    func = lambda fname: buildrow(fname, fdefs, full=full)
-    out = map(func, files)
-    return out
+    return map(lambda fname: buildrow(fname, fdefs, full=full), files)
 
 
-def concatoutput(data):
-    formatted = ''.join(['\n', data, '\n', '\n'])
-    return formatted
+def concatoutput(data: str):
+    return ''.join(['\n', data, '\n', '\n'])
 
 
-def display(rows):
-    formatted = concatoutput(rows)
-    pagedisplay(formatted)
+def display(rows_str: str):
+    pagedisplay(concatoutput(rows_str))
     return True
 
 
-def get_dir_listing(start=None, filtres=None):
-    if start is None:
-        start = './'
-    if start != './':
-        start = os.path.relpath(start)
-    joinit = (
-        lambda f: (
-            os.path.join(
-                (
-                    start[2:] if
-                    (start[:2] == './') else
-                    start
-                ),
-                f
-            )
-        )
-    )
-    filterit = (
-        lambda f: (
-            filtres in f
-        )
-    )
-    if (not os.path.exists(start)) or (not os.path.isdir(start)):
+def get_dir_listing(start: Opt[str] = None, filtres: Opt[str] = None):
+    start1 = "./" if start is None else start
+    realstart = os.path.relpath(start1) if start1 != "./" else start1
+    if (not os.path.exists(start1)) or (not os.path.isdir(start1)):
         return None
     files = os.listdir(start)
     fpaths = (
         iter(files) if
         (filtres is None) else
-        filter(filterit, files)
+        filter(lambda f: filtres in f, files)
     )
-    paths = map(joinit, fpaths)
+    paths = map(
+        lambda f: os.path.join(
+            (realstart[2:] if (realstart[:2] == './') else realstart),
+            f
+        ),
+        fpaths
+    )
     return paths
 
 
-def getfiles(start=None, full=False, filtres=None):
+def getfiles(start: Opt[str] = None, full: bool = False, filtres: Opt[str] = None):
     paths = get_dir_listing(start=start, filtres=filtres)
     if paths is None:
         return None
     processed = processrows(paths, full=full)
-    sfiles = sorted(processed, key=sortfile, reverse=False)
-    out = list(sfiles)
-    return out
+    return sorted(processed, key=sortfile, reverse=False)
 
 
-def pagedisplay(output):
+def pagedisplay(output: str):
     """
     See:
         https://chase-seibert.github.io/blog
@@ -659,17 +654,17 @@ def pagedisplay(output):
     with proc() as pager:
         try:
             pager.communicate(encoded)
-            pager.stdin.close()
+            if pager.stdin is not None:
+                pager.stdin.close()
             pager.wait()
         except KeyboardInterrupt:
             ## TODO: Any way to stop ctrl-c from
             ## screwing up keyboard entry?
             pager.terminate()
             pager.wait()
-    return True
 
 
-def run(start=None, full=False, filtres=None):
+def run(start: Opt[str]=None, full: bool=False, filtres: Opt[str]=None):
     files = getfiles(start=start, full=full, filtres=filtres)
     if files is None:
         rendererror()
@@ -681,7 +676,6 @@ def run(start=None, full=False, filtres=None):
 
 def rendererror():
     sys.stderr.write("Path could not be found, or path is not a directory.\n")
-    return True
 
 
 def getargs():
